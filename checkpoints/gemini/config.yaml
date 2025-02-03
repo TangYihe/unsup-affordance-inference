@@ -1,0 +1,10 @@
+model:
+  in_channels: 1024
+  filters: [256, 64, 1]
+  kernel_sizes: [3, 3, 1]
+  strides: [1, 1, 1]
+  norm: None
+  activation: lrelu
+  lang_emb_dim: 1024
+  film_mode: zero
+checkpoint_path: checkpoints/gemini/checkpoint.pth
