@@ -53,8 +53,9 @@ demo = gr.Interface(
     title="Affordance Detection",
     description="Upload an image and provide a text query to detect affordances.",
     examples=[
-        ["test.png", "rim"]  # Add your test image and query
-    ]
+        ["examples/test.png", "rim"]  # Add your test image and query
+    ],
+    cache_examples=True
 )
 
 if __name__ == "__main__":
