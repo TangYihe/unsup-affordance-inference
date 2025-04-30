@@ -10,7 +10,7 @@ import torch
 import torch.nn.functional as F
 import torchvision.transforms as T
 from PIL import Image
-
+import matplotlib.pyplot as plt
 from openai import OpenAI
 
 ##############################################
@@ -36,26 +36,49 @@ def rescale_img(img, max_size=448):
 ### DINO features
 ##############################################
 
-def load_pretrained_dino(torch_path, model_type='dinov2_vitl14', device=None):
+# def load_pretrained_dino(torch_path, model_type='dinov2_vitl14', device=None):
+#     '''
+#     Args:
+#         torch_path: path to download pretrained model weights
+#         model_type: in ['dinov2_vits14', 'dinov2_vitb14', 'dinov2_vitl14', 'dinov2_vitg14']
+#         device: torch.device to load the model on. If None, will automatically detect
+#     '''
+#     # specify path to download pretrained model weights
+#     os.environ['TORCH_HOME'] = torch_path
+
+#     # Automatically determine device if not specified
+#     if device is None:
+#         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+#     # load model
+#     if model_type not in ['dinov2_vits14', 'dinov2_vitb14', 'dinov2_vitl14', 'dinov2_vitg14']:
+#         raise ValueError('Invalid model type')
+    
+#     dinov2 = torch.hub.load('facebookresearch/dinov2', model_type).eval()
+#     dinov2 = dinov2.to(device)
+    
+#     return dinov2
+
+def load_pretrained_dino(torch_path, model_type='dinov2_vitl14', use_registers=False, device=None):
     '''
-    Args:
-        torch_path: path to download pretrained model weights
-        model_type: in ['dinov2_vits14', 'dinov2_vitb14', 'dinov2_vitl14', 'dinov2_vitg14']
-        device: torch.device to load the model on. If None, will automatically detect
+    model_type: in ['dinov2_vits14', 'dinov2_vitb14', 'dinov2_vitl14', 'dinov2_vitg14']
+    use_registers: bool, whether to use registers
     '''
     # specify path to download pretrained model weights
     os.environ['TORCH_HOME'] = torch_path
 
-    # Automatically determine device if not specified
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # load model
-    if model_type not in ['dinov2_vits14', 'dinov2_vitb14', 'dinov2_vitl14', 'dinov2_vitg14']:
-        raise ValueError('Invalid model type')
+    if model_type not in ['dinov2_vits14', 'dinov2_vitb14', 'dinov2_vitl14', 'dinov2_vitg14', 'dinov2_vits14_reg', 'dinov2_vitb14_reg', 'dinov2_vitl14_reg', 'dinov2_vitg14_reg']:
+        raise ValueError('Invalid model type', model_type)
     
-    dinov2 = torch.hub.load('facebookresearch/dinov2', model_type).eval()
-    dinov2 = dinov2.to(device)
+    if use_registers and 'reg' not in model_type:
+        model_type = model_type + '_reg'
+    
+    dinov2 = torch.hub.load('facebookresearch/dinov2', model_type).eval().to(device)
+    print(f"Loaded {model_type} model")
     
     return dinov2
 
@@ -149,3 +172,60 @@ def preprocess_data(img, text, lang_emb_dim=1024):
     lang_emb = torch.tensor(get_text_embedding(text, dim=lang_emb_dim)).to(torch.float32)
 
     return processed_img, lang_emb
+
+##############################################
+### Visualization
+##############################################
+
+def vis_heatmap(img, aff):
+    plt.imshow(img) 
+    plt.imshow(aff, cmap="hot", alpha=np.clip(aff*2, 0.3, 0.9))
+    plt.axis('off')
+    plt.savefig("heatmap.png")
+ 
+def overlay_heatmap(img, aff):
+    """Compute the heatmap overlay on the image"""
+    # Convert heatmap to colors using the 'hot' colormap
+    cmap = plt.cm.hot
+    heatmap_colored = cmap(aff)[:, :, :3]  # Remove alpha channel
+    
+    # Apply alpha blending
+    alpha = np.clip(aff*2, 0.3, 0.9)
+    alpha = alpha[:, :, None]  # Add channel dimension for broadcasting
+    
+    # Blend the original image with the heatmap
+    blended = img * (1-alpha) + heatmap_colored * alpha
+    
+    # Ensure output is in uint8 range
+    return (blended * 255).astype(np.uint8)
+
+def resize_image(image, target_shape=None):
+    """
+    Resizes an image to the target shape using bilinear interpolation.
+    
+    Parameters:
+        image (np.ndarray): The input image as a HxW numpy array.
+        target_shape (tuple): The target shape (height, width).
+    
+    Returns:
+        np.ndarray: The resized image as a H'xW' numpy array.
+    """
+    # Convert the numpy image to a torch tensor and add batch and channel dimensions
+    if len(image.shape) == 2:
+        image = image[:, :, np.newaxis]
+    image_tensor = torch.from_numpy(image).float().unsqueeze(0).permute(0, 3, 1, 2)  # Shape: [1, 1, H, W]
+
+    # resize to nearest multiple of 14
+    if target_shape is None:
+        target_shape = (image.shape[0]//14*14, image.shape[1]//14*14)
+    else:
+        target_shape = (target_shape, target_shape)
+
+    # Resize the image using interpolate
+    resized_tensor = F.interpolate(image_tensor, size=target_shape, mode='bilinear', align_corners=False)
+
+    resized_tensor = resized_tensor.permute(0, 2, 3, 1)
+    
+    # Remove the batch and channel dimensions and convert back to numpy
+    resized_image = resized_tensor.squeeze().numpy()
+    return resized_image

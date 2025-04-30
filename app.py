@@ -4,15 +4,20 @@ Interface for HuggingFace deployment
 
 import gradio as gr
 import numpy as np
-from src.model import AffordanceModel
+# from src.model import AffordanceModel
+from src.model_new import load_trainer
 from src.utils.argument_utils import get_yaml_config
 import cv2
 
-print("Loading config...")
-config = get_yaml_config("checkpoints/gemini/config.yaml")
-print("Building model...")
-model = AffordanceModel(config)
-print("Model built successfully!")
+# print("Loading config...")
+# config = get_yaml_config("checkpoints/gemini/config.yaml")
+# print("Building model...")
+# model = AffordanceModel(config)
+# print("Model built successfully!")
+
+print("Loading model...")
+model = load_trainer("checkpoints/objaverse/0429_mixedbg_05.pth", device="cuda")
+print("Model loaded successfully!")
 
 def predict(image, text):
     """
