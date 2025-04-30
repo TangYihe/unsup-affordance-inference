@@ -52,10 +52,11 @@ demo = gr.Interface(
     outputs=gr.Image(label="Affordance Heatmap"),
     title="Affordance Detection",
     description="Upload an image and provide a text query to detect affordances.",
-    examples=[
-        ["examples/test.png", "rim"]  # Add your test image and query
-    ],
-    cache_examples=True
+    # examples=[
+    #     ["examples/test.png", "rim"]  # Add your test image and query
+    # ],
+    # cache_examples=True
+    cache_examples=False
 )
 
 if __name__ == "__main__":
