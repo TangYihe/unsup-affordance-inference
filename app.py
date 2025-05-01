@@ -1,63 +1,84 @@
-"""
-Interface for HuggingFace deployment
-"""
-
+# app.py ───────────────────────────────────────────────────────────────────
+from pathlib import Path
+import os, numpy as np
 import gradio as gr
-import numpy as np
-# from src.model import AffordanceModel
-from src.model_new import load_trainer
-from src.utils.argument_utils import get_yaml_config
-import cv2
+from PIL import Image
+import torch
 
-# print("Loading config...")
-# config = get_yaml_config("checkpoints/gemini/config.yaml")
-# print("Building model...")
-# model = AffordanceModel(config)
-# print("Model built successfully!")
+from src.model_new import load_trainer                     # your new helper
+from src.utils.img_utils import load_pretrained_dino   # unchanged util
 
-print("Loading model...")
-model = load_trainer("checkpoints/objaverse/0429_mixedbg_05.pth", device="cuda")
-print("Model loaded successfully!")
+# ------------------------------------------------------------------------
+# 0)  Global device
+# ------------------------------------------------------------------------
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-def predict(image, text):
-    """
-    Gradio inference function
-    Args:
-        image: PIL Image (Gradio's default image input format)
-        text: str
-    Returns:
-        visualization of the heatmap
-    """
-    # Convert PIL image to numpy array
-    image = np.array(image)
-    
-    # Run model inference
-    heatmap = model.inference(image, text)  # Returns (H, W) array
-    
-    # Visualize heatmap (convert to RGB for display)
-    # Scale to 0-255 and apply colormap
-    heatmap_vis = (heatmap * 255).astype(np.uint8)
-    heatmap_colored = cv2.applyColorMap(heatmap_vis, cv2.COLORMAP_JET)
-    heatmap_colored = cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB)
-    
-    return heatmap_colored
+# ------------------------------------------------------------------------
+# 1)  Build ONE DINO backbone and freeze it
+# ------------------------------------------------------------------------
+TORCH_HOME = Path(__file__).parent / "torch_home"   # adapt if needed
+print(f"⇢ Loading DINO-v2 backbone on {DEVICE} …")
+dino = load_pretrained_dino(
+    torch_path=str(TORCH_HOME),
+    model_type="dinov2_vits14",
+    use_registers=True,
+    device=DEVICE
+).to(DEVICE).eval()
 
-# Create Gradio interface
-demo = gr.Interface(
-    fn=predict,
-    inputs=[
-        gr.Image(type="pil", label="Input Image"),  # Accepts uploaded images
-        gr.Textbox(label="Text Query", placeholder="Enter text description...")
-    ],
-    outputs=gr.Image(label="Affordance Heatmap"),
-    title="Affordance Detection",
-    description="Upload an image and provide a text query to detect affordances.",
-    examples=[
-        ["examples/test.png", "rim"]  # Add your test image and query
-    ],
-    cache_examples=True
-    # cache_examples=False
-)
+for p in dino.parameters():
+    p.requires_grad_(False)
+print("✓ DINO ready")
 
-if __name__ == "__main__":
-    demo.launch()
+# ------------------------------------------------------------------------
+# 2)  Discover checkpoints in ./ckpts
+# ------------------------------------------------------------------------
+CKPT_DIR = Path(__file__).parent / "checkpoints" / "objaverse"
+CKPTS = {p.stem: p for p in CKPT_DIR.glob("*.pth")}
+DEFAULT_LABEL = next(iter(CKPTS))  # first one
+
+# ------------------------------------------------------------------------
+# 3)  Cache Trainers (share the *same* DINO instance)
+# ------------------------------------------------------------------------
+_loaded_trainers = {}   # label → Trainer
+
+def get_trainer(label: str):
+    if label not in _loaded_trainers:
+        print(f"⇢ Loading FiLM head: {CKPTS[label].name}")
+        _loaded_trainers[label] = load_trainer(
+            dino,                       # shared backbone
+            CKPTS[label],               # checkpoint path
+            device=DEVICE
+        )
+    return _loaded_trainers[label]
+
+# ------------------------------------------------------------------------
+# 4)  Inference wrapper
+# ------------------------------------------------------------------------
+def predict(img_pil: Image.Image, text: str, ckpt_label: str):
+    trainer = get_trainer(ckpt_label)
+    mask = trainer.inference(np.array(img_pil), text, thresh=0.5)
+    return Image.fromarray((mask * 255).astype(np.uint8))
+
+# ------------------------------------------------------------------------
+# 5)  Gradio UI
+# ------------------------------------------------------------------------
+with gr.Blocks(title="Affordance Heat-map Demo") as demo:
+    ckpt_dd = gr.Dropdown(
+        label="Checkpoint",
+        choices=list(CKPTS.keys()),
+        value=DEFAULT_LABEL,
+        interactive=True
+    )
+
+    img_in   = gr.Image(type="pil", label="Input RGB")
+    text_in  = gr.Textbox(label="Affordance Query", value="cup handle")
+    mask_out = gr.Image(type="pil", label="Heat-map")
+
+    run_btn = gr.Button("Run")
+    run_btn.click(
+        predict,
+        inputs=[img_in, text_in, ckpt_dd],
+        outputs=mask_out
+    )
+
+demo.launch()

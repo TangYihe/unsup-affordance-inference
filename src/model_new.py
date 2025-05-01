@@ -55,13 +55,14 @@ class Trainer:
         Override the default Conv2DFiLMNet hyper‑parameters.
     """
 
-    def __init__(self, ckpt_path: os.PathLike, *, device: Optional[torch.device] = None, model_cfg: Optional[dict] = None):
+    def __init__(self, ckpt_path: os.PathLike, dino, *, device: Optional[torch.device] = None, model_cfg: Optional[dict] = None):
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.cfg = model_cfg or DEFAULT_MODEL_CFG
 
         # 1)   Vision backbone (frozen DINO‑v2)
         torch_path = osp.join(osp.dirname(osp.dirname(__file__)), "data/torch_home")
-        self.dino = load_pretrained_dino(torch_path=torch_path, model_type='dinov2_vits14', use_registers=True, device=self.device).to(self.device).eval()
+        # self.dino = load_pretrained_dino(torch_path=torch_path, model_type='dinov2_vits14', use_registers=True, device=self.device).to(self.device).eval()
+        self.dino = dino
         for p in self.dino.parameters():
             p.requires_grad_(False)
 
@@ -127,7 +128,7 @@ class Trainer:
 
 # Convenience factory ----------------------------------------------------
 
-def load_trainer(ckpt_path: str | Path, device: Optional[str] = None) -> Trainer:
+def load_trainer(dino, ckpt_path: str | Path, device: Optional[str] = None) -> Trainer:
     """Single‑line helper so `app.py` can do:
 
     ```python
@@ -135,4 +136,4 @@ def load_trainer(ckpt_path: str | Path, device: Optional[str] = None) -> Trainer
     mask = trainer.inference(img, "cup handle")
     ```
     """
-    return Trainer(ckpt_path, device=device)
+    return Trainer(dino,ckpt_path, device=device)
