@@ -136,4 +136,4 @@ def load_trainer(dino, ckpt_path: str | Path, device: Optional[str] = None) -> T
     mask = trainer.inference(img, "cup handle")
     ```
     """
-    return Trainer(dino,ckpt_path, device=device)
+    return Trainer(ckpt_path=ckpt_path, dino=dino, device=device)

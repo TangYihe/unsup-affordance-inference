@@ -4,7 +4,11 @@ numpy
 opencv-python-headless  # using headless version for server deployment
 Pillow  # for PIL
 openai  # for OpenAI API
-gradio
+# gradio
 pyyaml  # for yaml
 matplotlib
 IPython
+
+spaces==0.34.2
+gradio==5.28.0
+gradio-client==1.10.0

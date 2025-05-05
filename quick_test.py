@@ -1,6 +1,7 @@
 import argparse, numpy as np, cv2, matplotlib.pyplot as plt
 from PIL import Image
 from src.model_new import load_trainer          # ← comes from our minimal file
+from src.utils.img_utils import load_pretrained_dino
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ckpt",  required=True)
@@ -9,7 +10,8 @@ parser.add_argument("--query", required=True)
 args = parser.parse_args()
 
 # 1) build the model (auto-chooses GPU if available)
-trainer = load_trainer(args.ckpt)
+dino = load_pretrained_dino(torch_path="/viscam/u/yihetang/unsup-affordance-inference/data/torch_home",model_type="dinov2_vits14", use_registers=True)
+trainer = load_trainer(ckpt_path=args.ckpt, dino=dino)
 trainer.model.eval()
 
 # 2) run inference
